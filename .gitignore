@@ -1,0 +1,25 @@
+__pycache__/
+*/dataset_csv
+*/logs
+*/MEN
+
+*.csv
+*.ipynb
+*.pkl
+*.png
+*.jpg
+*.jpeg
+*.pdf
+*.h5
+*.pt
+*.pth
+*.svs
+*.sh
+
+*/.ipynb_checkpoints/
+*/.vscode/
+*/.idea/
+
+# model checkpoints
+*.ckpt
+

@@ -36,30 +36,30 @@ class  ModelInterface(pl.LightningModule):
         self.data = [{"count": 0, "correct": 0} for i in range(self.n_classes)]
         
         #---->Metrics
-        if self.n_classes > 2: 
-            self.AUROC = torchmetrics.AUROC(num_classes = self.n_classes, average = 'macro')
+        if self.n_classes > 2:
+            task = 'multiclass' 
+            self.AUROC = torchmetrics.AUROC(num_classes = self.n_classes, average = 'macro', task = 'multiclass')
             metrics = torchmetrics.MetricCollection([torchmetrics.Accuracy(num_classes = self.n_classes,
-                                                                           average='micro'),
-                                                     torchmetrics.CohenKappa(num_classes = self.n_classes),
-                                                     torchmetrics.F1(num_classes = self.n_classes,
-                                                                     average = 'macro'),
+                                                                           average='micro', task = 'multiclass'),
+                                                     torchmetrics.CohenKappa(num_classes = self.n_classes, task = 'multiclass'),
+                                                     torchmetrics.F1Score(num_classes = self.n_classes,
+                                                                     average = 'macro', task = 'multiclass'),
                                                      torchmetrics.Recall(average = 'macro',
-                                                                         num_classes = self.n_classes),
+                                                                         num_classes = self.n_classes, task = 'multiclass'),
                                                      torchmetrics.Precision(average = 'macro',
-                                                                            num_classes = self.n_classes),
+                                                                            num_classes = self.n_classes, task = 'multiclass'),
                                                      torchmetrics.Specificity(average = 'macro',
-                                                                            num_classes = self.n_classes)])
+                                                                            num_classes = self.n_classes, task = 'multiclass')])
         else : 
-            self.AUROC = torchmetrics.AUROC(num_classes=2, average = 'macro')
-            metrics = torchmetrics.MetricCollection([torchmetrics.Accuracy(num_classes = 2,
-                                                                           average = 'micro'),
-                                                     torchmetrics.CohenKappa(num_classes = 2),
-                                                     torchmetrics.F1(num_classes = 2,
-                                                                     average = 'macro'),
-                                                     torchmetrics.Recall(average = 'macro',
-                                                                         num_classes = 2),
-                                                     torchmetrics.Precision(average = 'macro',
-                                                                            num_classes = 2)])
+            task = 'binary'
+            self.AUROC = torchmetrics.AUROC(num_classes=2, average='macro', task=task)
+            metrics = torchmetrics.MetricCollection([
+            torchmetrics.Accuracy(num_classes=2, average='micro', task=task),
+            torchmetrics.CohenKappa(num_classes=2, task=task),
+            torchmetrics.F1Score(num_classes=2, average='macro', task=task),
+            torchmetrics.Recall(average='macro', num_classes=2, task=task),
+            torchmetrics.Precision(average='macro', num_classes=2, task=task)
+            ])
         self.valid_metrics = metrics.clone(prefix = 'val_')
         self.test_metrics = metrics.clone(prefix = 'test_')
 
@@ -77,7 +77,7 @@ class  ModelInterface(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         #---->inference
-        data, label = batch
+        data, label, _ = batch
         results_dict = self.model(data=data, label=label)
         logits = results_dict['logits']
         Y_prob = results_dict['Y_prob']
@@ -106,7 +106,7 @@ class  ModelInterface(pl.LightningModule):
         self.data = [{"count": 0, "correct": 0} for i in range(self.n_classes)]
 
     def validation_step(self, batch, batch_idx):
-        data, label = batch
+        data, label, _ = batch
         results_dict = self.model(data=data, label=label)
         logits = results_dict['logits']
         Y_prob = results_dict['Y_prob']
@@ -156,7 +156,7 @@ class  ModelInterface(pl.LightningModule):
         return [optimizer]
 
     def test_step(self, batch, batch_idx):
-        data, label = batch
+        data, label, slide_id = batch
         results_dict = self.model(data=data, label=label)
         logits = results_dict['logits']
         Y_prob = results_dict['Y_prob']
@@ -167,7 +167,7 @@ class  ModelInterface(pl.LightningModule):
         self.data[Y]["count"] += 1
         self.data[Y]["correct"] += (Y_hat.item() == Y)
 
-        return {'logits' : logits, 'Y_prob' : Y_prob, 'Y_hat' : Y_hat, 'label' : label}
+        return {'logits' : logits, 'Y_prob' : Y_prob, 'Y_hat' : Y_hat, 'label' : label, 'slide_id' : slide_id[0]}
 
     def test_epoch_end(self, output_results):
         probs = torch.cat([x['Y_prob'] for x in output_results], dim = 0)
@@ -195,6 +195,10 @@ class  ModelInterface(pl.LightningModule):
         #---->
         result = pd.DataFrame([metrics])
         result.to_csv(self.log_path / 'result.csv')
+        import pickle
+        with open(self.log_path / 'result.pkl', 'wb') as f:
+            # output_results = [{k:v.cpu() if type(v) != tuple else (k,v) for k,v in x.items()} for x in output_results]
+            pickle.dump(output_results, f)
 
 
     def load_model(self):
@@ -219,7 +223,7 @@ class  ModelInterface(pl.LightningModule):
             from self.hparams dictionary. You can also input any args
             to overwrite the corresponding value in self.hparams.
         """
-        class_args = inspect.getargspec(Model.__init__).args[1:]
+        class_args = inspect.getfullargspec(Model.__init__).args[1:]
         inkeys = self.hparams.model.keys()
         args1 = {}
         for arg in class_args:

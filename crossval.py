@@ -18,7 +18,6 @@ def make_parse():
     parser.add_argument('--config', default='Camelyon/TransMIL.yaml',type=str)
     parser.add_argument('--gpus', default = [1])
     parser.add_argument('--fold', default = 0)
-    
     args = parser.parse_args()
     return args
 
@@ -67,27 +66,32 @@ def main(cfg):
     )
 
     #---->train or test
+    print(f"Server: {cfg.General.server}")
     if cfg.General.server == 'train':
         trainer.fit(model = model, datamodule = dm)
     else:
         model_paths = list(cfg.log_path.glob('*.ckpt'))
         model_paths = [str(model_path) for model_path in model_paths if 'epoch' in str(model_path)]
         for path in model_paths:
-            print(path)
-            # new_model = model.load_from_checkpoint(checkpoint_path=path, cfg=cfg)
-            # trainer.test(model=new_model, datamodule=dm)
+            new_model = model.load_from_checkpoint(checkpoint_path=path, cfg=cfg)
+            trainer.test(model=new_model, datamodule=dm)
 
 if __name__ == '__main__':
 
     args = make_parse()
     cfg = read_yaml(args.config)
+    # loop over folds
+    start = cfg.Data.k_start
+    stop = cfg.Data.k_end
+    
+    for fold in range(start,stop):
+        print(f"Computing fold {fold} of {stop} folds.")
+        #---->update
+        cfg.config = args.config
+        cfg.General.gpus = args.gpus
+        cfg.General.server = args.stage
+        cfg.Data.fold = fold
 
-    #---->update
-    cfg.config = args.config
-    cfg.General.gpus = args.gpus
-    cfg.General.server = args.stage
-    cfg.Data.fold = args.fold
-
-    #---->main
-    main(cfg)
+        #---->main
+        main(cfg)
  
